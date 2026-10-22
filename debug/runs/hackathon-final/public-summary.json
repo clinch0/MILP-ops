@@ -1,0 +1,115 @@
+{
+  "integration": {
+    "tests": 770,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "fresh_compose_volumes_no_network_passed": true
+  },
+  "operator": {
+    "passed": true,
+    "answered_test_softphone": true,
+    "stand_acknowledged": true,
+    "seconds": 53.55160774302203,
+    "staffed_human_not_tested": true
+  },
+  "reminder": {
+    "passed": true,
+    "status": "confirmed",
+    "confirmation_scope": "local; DBI does not provide confirmed status",
+    "test_visit_cancel_acknowledged": true,
+    "received_pcm_samples": 304243,
+    "received_rms": 3365.01
+  },
+  "agent_after_restart": {
+    "passed": true,
+    "mode": "openai",
+    "model_call_verified": true,
+    "test_visit_cancel_acknowledged": true
+  },
+  "raw_evidence": "Kept privately on the team VM under debug/runs; no raw logs/transcripts/audio in this public report",
+  "reminder_reschedule_replay": {
+    "passed": true,
+    "scope": "real PCM / production VAD / organizer Whisper / NLU / Rust / DBI; no SIP call",
+    "test_visit_cancel_acknowledged": true,
+    "real_outbound_retest_pending": true
+  },
+  "browser": {
+    "text_booking_verified": true,
+    "real_wav_asr_steps_verified": 6,
+    "slot_ordinal_bug_fixed": true,
+    "full_audio_browser_retest_pending": false,
+    "physical_microphone_not_tested": true,
+    "audio_booking_insert_verified": true,
+    "accepted_on": "2026-10-22"
+  },
+  "medical_boundary_audio": {
+    "passed": true,
+    "codecs": [
+      {
+        "codec": "pcm",
+        "wer": 0.0,
+        "numbers_match": true,
+        "polarity_match": true,
+        "status_match": true
+      },
+      {
+        "codec": "alaw",
+        "wer": 0.0,
+        "numbers_match": true,
+        "polarity_match": true,
+        "status_match": true
+      },
+      {
+        "codec": "ulaw",
+        "wer": 0.0,
+        "numbers_match": true,
+        "polarity_match": true,
+        "status_match": true
+      }
+    ],
+    "fresh_bank_passed": 41,
+    "numeric_gate_relaxed": false,
+    "naturalness_requires_human_listening": true
+  },
+  "editor_ci": {
+    "status": "passed",
+    "commit": "6ca0ef712b8300a0dc297618a6663fca324e117a",
+    "url": "https://github.com/Emilka135/MILP-ops/actions/runs/39780158542",
+    "scope": "8 real browser checks including drag, save and restore; screenshot inspected"
+  },
+  "docx_ci": {
+    "full_coverage_verified": false,
+    "remaining": "label/entities/FSM and source/module behavior bindings; see TODO.md"
+  },
+  "callback_failure_audio": {
+    "passed": true,
+    "codecs": [
+      {
+        "codec": "pcm",
+        "wer": 0.0,
+        "numbers_match": true,
+        "polarity_match": true,
+        "status_match": true
+      },
+      {
+        "codec": "alaw",
+        "wer": 0.0,
+        "numbers_match": true,
+        "polarity_match": true,
+        "status_match": true
+      },
+      {
+        "codec": "ulaw",
+        "wer": 0.0,
+        "numbers_match": true,
+        "polarity_match": true,
+        "status_match": true
+      }
+    ],
+    "targeted_callback_crm_hours_tests": 38,
+    "local_bank_passed": 41,
+    "production_whisper_bank_passed": 41,
+    "polarity_gate_relaxed": false
+  }
+}

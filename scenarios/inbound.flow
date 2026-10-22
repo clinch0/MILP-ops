@@ -362,7 +362,7 @@ state existing_select
 
 # Source section 3.8 / I-13: boundary response; only a consultation can follow.
 state medical_boundary
-  say "Я не могу назначать лечение или советовать лекарства. Могу помочь записаться к врачу. Записать вас? Один — да. Два — регистратор."
+  say "Я не могу назначать лечение или советовать лекарства. Могу помочь записаться к врачу. Для записи нажмите один. Для связи с регистратором нажмите два."
   listen 15s
   dtmf 1 -> intent_book
   dtmf 2 -> operator reason=medical_question

@@ -33,8 +33,29 @@ def to_slots(req):
     req('text',call_id=key,text='один')
     req('text',call_id=key,text='Иванов Иван Иванович')
     result=req('text',call_id=key,text='12.04.1985')
+    assert result['state']=='demo.identity_readback'
+    assert not result['offers'] and not result['sandbox_booking']
+    result=req('dtmf',call_id=key,digit='1')
     assert result['state']=='demo.slots',result
     return key,result
+
+
+@pytest.mark.parametrize('phrase',['Первый вариант.','Вариант два.','Третий вариант!','1.'])
+def test_spoken_slot_choice_still_requires_explicit_confirmation(app,phrase):
+    _,store,_,req,_=app
+    key,_=to_slots(req)
+    result=req('text',call_id=key,text=phrase)
+    assert result['state']=='demo.booking_confirm'
+    assert not store.tables()['tables']['bookings']
+
+
+@pytest.mark.parametrize('phrase',['Не первый вариант.','Первый или второй.'])
+def test_uncertain_slot_choice_does_not_select_or_book(app,phrase):
+    _,store,_,req,_=app
+    key,_=to_slots(req)
+    result=req('text',call_id=key,text=phrase)
+    assert result['state']=='demo.slots'
+    assert not store.tables()['tables']['bookings']
 
 
 @pytest.mark.parametrize('phrase',['К глазнику','К глазнику меня запиши','К окулисту','К офтальмологу'])
@@ -90,9 +111,12 @@ def test_unknown_patient_never_gets_slot(app):
     key=req('start')['call_id'];req('dtmf',call_id=key,digit='1');req('dtmf',call_id=key,digit='1')
     req('text',call_id=key,text='Иванов Иван Иванович')
     r=req('text',call_id=key,text='13.04.1985')
-    assert r['state']=='demo.identity_name' and not r['offers']
-    req('text',call_id=key,text='Иванов Иван Иванович')
-    assert req('text',call_id=key,text='13.04.1985')['state']=='demo.identity_policy'
+    assert r['state']=='demo.identity_readback' and not r['offers']
+    # Confirming a nonexistent identity never gives access to appointments.
+    r=req('dtmf',call_id=key,digit='1')
+    assert r['state']=='demo.identity_readback' and not r['offers']
+    r=req('dtmf',call_id=key,digit='1')
+    assert r['state']=='demo.identity_policy'
     r=req('text',call_id=key,text='9999999999999999')
     assert r['state']=='demo.operator' and 'patient_not_found_after_oms' in r['flags']
     assert not store.tables()['tables']['bookings']
@@ -104,6 +128,8 @@ def test_referral_is_checked_in_table_despite_spoken_yes(app):
     req('text',call_id=key,text='да есть направление');req('text',call_id=key,text='один')
     req('text',call_id=key,text='Иванов Иван Иванович')
     r=req('text',call_id=key,text='12.04.1985')
+    assert r['state']=='demo.identity_readback'
+    r=req('dtmf',call_id=key,digit='1')
     assert r['state']=='demo.operator' and 'referral_not_verified' in r['flags']
     assert not store.tables()['tables']['bookings']
 
@@ -344,12 +370,14 @@ def test_birth_queries_and_no_century_guess_or_age_cutoff(app):
     req('text',call_id=key,text='Иванов Сергей Владимирович')
     for phrase in ['Ноль три, ноль пять девяносто шесть.','Двенадцатое 09.81','5 сентября восьмого года.']:
         r=req('text',call_id=key,text=phrase)
-        assert r['state']=='demo.identity_birth' and 'год рождения полностью' in r['prompt'] and not r['queries']
+        assert r['state']=='demo.identity_birth' and 'год рождения полностью' in r['prompt'] and not r['offers'] and not r['sandbox_booking']
     r=req('text',call_id=key,text='5 октября 1915')
+    assert r['state']=='demo.identity_readback' and not r['offers']
+    r=req('dtmf',call_id=key,digit='1')
     assert r['state']=='demo.slots' and r['patient']['id']==99
-    query=next(q for q in r['queries'] if 'FROM patients' in q['sql'])
-    assert query['params']==['Иванов Сергей Владимирович','1915-10-05'] and query['result'][0]['id']==99
-    assert query['state']=='demo.identity_birth' and store.call(key)['queries']==r['queries']
+    query=next(q for q in reversed(r['queries']) if 'FROM identity_people' in q['sql'] and '1915-10-05' in q['params'])
+    assert query['result'][0]['id']==99
+    assert query['state']=='demo.identity_readback' and store.call(key)['queries']==r['queries']
 
 
 def test_initial_name_is_retained_but_requires_confirmation(app):
@@ -369,6 +397,8 @@ def test_multiple_doctors_and_unknown_district_must_be_resolved(app):
     key=req('start')['call_id'];req('dtmf',call_id=key,digit='1');req('text',call_id=key,text='Продолжить')
     req('text',call_id=key,text='Иванов Иван Иванович')
     r=req('text',call_id=key,text='12.04.1985')
+    assert r['state']=='demo.identity_readback'
+    r=req('dtmf',call_id=key,digit='1')
     assert r['state']=='demo.district' and not r['offers']
     r=req('text',call_id=key,text='четырнадцать')
     assert r['state']=='demo.doctor' and 'Другой тестовый врач' in r['prompt'] and not r['offers']

@@ -97,10 +97,17 @@ def execute(base, tts_url, rate=1.5, mode="speech-only", output_dir=None):
         state = say(call, "Петрова Мария Сергеевна.")
         assert state["state"]=="identity.birth",state
         state = say(call, "Двадцать третье ноября тысяча девятьсот девяносто второго года.")
+        assert state["state"] == "identity.readback" and not state["vars"].get("patient_id")
+        state = say(call, "Да, данные верны.")
+        if state['state']=='identity.readback':
+            # A one-letter ASR discrepancy requires a second, database-backed
+            # readback; it must not silently verify the approximate identity.
+            assert not state['vars'].get('patient_id') and state['vars']['identity_readback_confirmed'], state
+            state = say(call, "Да, верно.")
     else:
-        for digit in "121003#23111992":
+        for digit in "131003#231119921":
             state = post("call.dtmf", call_id=call, digit=digit)
-    assert state["state"] == "inbound.book_start", state["state"]
+    assert state["state"] == "inbound.book_start", state
     state = say(call, "Запишите меня к терапевту.")
     assert state["state"] == "inbound.book_offer", state["state"]
     state = say(call, "Да, подходит.")
@@ -143,7 +150,7 @@ def execute(base, tts_url, rate=1.5, mode="speech-only", output_dir=None):
 
     report = {
         "mode": mode,
-        "dtmf_inputs": 0 if mode == "speech-only" else len("121003#23111992"),
+        "dtmf_inputs": 0 if mode == "speech-only" else len("131003#231119921"),
         "asr_inputs": len(records),
         "rate": rate,
         "booking_id": bid,

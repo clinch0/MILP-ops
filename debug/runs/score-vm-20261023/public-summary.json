@@ -1,0 +1,39 @@
+{
+  "scope": "isolated CPU integration candidate, not production or full DOCX certification",
+  "date": "2026-10-23",
+  "base_score_branch": "59a2b318735b908e3d12328ecaf32d989643350e",
+  "integration_tests": {
+    "passed": 857,
+    "failed": 0,
+    "skipped": 0,
+    "seconds": 260.9,
+    "command": "cargo build --locked --bins && cargo test --locked --lib && python -m pytest -q tests/integration --timeout=60",
+    "network": "none",
+    "external_mis_writes": 0,
+    "paid_model_calls": 0
+  },
+  "rust_library_tests": {
+    "passed": 29,
+    "failed": 0
+  },
+  "static_audio_audit": {
+    "passed": 45,
+    "failed": 0,
+    "engine": "real local GigaAM v3 e2e RNN-T CPU int8",
+    "tts": "Silero CIS, context silero-stress 1.5",
+    "quality_policy": "ru-clinic-critical-4",
+    "naturalness": "requires listening"
+  },
+  "short_confirmation_fixture": {
+    "sha256": "03ca4e38b6515731fd085cb3472f0bda9b5800f673baeea23acc592caa17833e",
+    "before": "empty transcript",
+    "after": "Да, данные верны.",
+    "change": "200 ms endpoint context for utterances up to 2 s, same original PCM"
+  },
+  "limits": [
+    "not full DOCX source coverage certification",
+    "not twenty full concurrent appointment phone calls",
+    "physical microphone not tested",
+    "new combined branch deployment evidence recorded separately"
+  ]
+}

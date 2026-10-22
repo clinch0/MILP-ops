@@ -12,7 +12,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def stack(tmp_path_factory):
     folder = tmp_path_factory.mktemp("stack")
     port = 28180
@@ -70,7 +70,7 @@ def stack(tmp_path_factory):
 def make_booking(post, cid):
     post("call.start", call_id=cid, caller_phone="79165550000")
     state = None
-    for digit in "121003#2311199211":
+    for digit in "131003#23111992111":
         state = post("call.dtmf", call_id=cid, digit=digit)
     assert state["status"] == "booked", {"state": state["state"], "vars": state["vars"]}
     return state
@@ -167,10 +167,10 @@ def test_operator_access_at_identity_step_and_ticket_panel(stack):
 def test_wrong_identity_never_books(stack):
     post, _ = stack
     post("call.start", call_id="wrong-birth", caller_phone="79165550000")
-    for digit in "121003#01012000":
+    for digit in "131003#01012000":
         state = post("call.dtmf", call_id="wrong-birth", digit=digit)
-    assert state["state"] == "identity.name"
-    assert not state["finished"] and not state["sms"]
+    assert state["status"] == "transfer"
+    assert not state["sms"] and not state["vars"].get("patient_id")
 
 
 def test_active_calls_reject_duplicate_ids(stack):
@@ -235,7 +235,7 @@ def test_combined_tones_and_real_speech(stack):
 def test_assisted_confirmed_booking_and_post_confirmation_finish(stack):
     post, _ = stack
     state = post("call.start", call_id="assisted-book", flow="assisted", caller_phone="79165550000")
-    for digit in "21003#23111992": state = post("call.dtmf", call_id="assisted-book", digit=digit)
+    for digit in "31003#231119921": state = post("call.dtmf", call_id="assisted-book", digit=digit)
     assert state["state"] == "assisted.ask_request"
     state = post("call.dtmf", call_id="assisted-book", digit="1")
     assert state["state"] == "assisted.offer"
@@ -251,7 +251,7 @@ def test_assisted_confirmed_booking_and_post_confirmation_finish(stack):
 def test_assisted_three_declines_handoff_exact_machine_view_and_dialogue(stack):
     post, _ = stack
     post("call.start", call_id="assisted-decline", flow="assisted", caller_phone="79165550000")
-    for digit in "21003#23111992": post("call.dtmf", call_id="assisted-decline", digit=digit)
+    for digit in "31003#231119921": post("call.dtmf", call_id="assisted-decline", digit=digit)
     state = post("call.dtmf", call_id="assisted-decline", digit="1")
     seen = []
     for attempt in range(1, 4):
@@ -281,7 +281,7 @@ def test_assisted_optional_feedback_after_explicit_details_confirmation(stack):
     post, _ = stack
     call = "assisted-feedback"
     post("call.start", call_id=call, flow="assisted", caller_phone="79165550000", registrar_number="100")
-    for digit in "21003#23111992": post("call.dtmf", call_id=call, digit=digit)
+    for digit in "31003#231119921": post("call.dtmf", call_id=call, digit=digit)
     post("call.dtmf", call_id=call, digit="1")
     state = post("call.dtmf", call_id=call, digit="1")
     assert state["state"] == "assisted.success"
@@ -298,8 +298,10 @@ def test_spoken_historical_birth_date_is_contextual_identity_not_appointment_dat
     call = "spoken-birth"
     post("call.start", call_id=call, caller_phone="79165550000")
     post("call.dtmf", call_id=call, digit="1")
-    for digit in "21003#":state=post("call.dtmf",call_id=call,digit=digit)
+    for digit in "31003#":state=post("call.dtmf",call_id=call,digit=digit)
     assert state["state"] == "identity.birth" and state["listening"] is True
     state = post("call.speech", call_id=call, text="двадцать третьего ноября тысяча девятьсот девяносто второго года")
+    assert state["state"] == "identity.readback" and not state["vars"].get("patient_id")
+    state = post("call.dtmf", call_id=call, digit="1")
     assert state["state"] == "inbound.book_start" and state["vars"]["patient_id"] == 3
     assert "said_date" not in state["vars"] and not state["sms"] and not state["finished"]

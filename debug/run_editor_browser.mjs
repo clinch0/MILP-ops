@@ -49,11 +49,15 @@ try{
   const after=await page.evaluate(async()=>await (await fetch('/api/project')).json());assert.deepEqual(after.flows.find(f=>f.name==='scenario_1').states.find(s=>s.name==='start').edges[0].values,['1','0']);checks.push('DTMF condition changed through keypad and persisted');
   stage='add-block';
   await page.getByRole('button',{name:'Блоки',exact:true}).click();await page.locator('.palette-end').click();
+  // A disconnected new block becomes the nearby-view center. Reveal the full
+  // graph through its actual UI before connecting it to the old source.
+  await page.getByRole('button',{name:'Все блоки',exact:true}).click();
   await page.getByRole('button',{name:'Упорядочить',exact:true}).click();await page.waitForTimeout(700);await page.locator('.react-flow__controls-fitview').click();await page.waitForTimeout(300);
   stage='connect-blocks';
   const from=page.locator('[data-id="scenario_1.start"] [data-handleid="new"]');
   const to=page.locator('[data-id="scenario_1.end_1"] .react-flow__handle.target');
   stage='connect-drag-source';
+  await page.locator('[data-id="scenario_1.start"]').hover();
   await from.hover();
   const sourceBox=await from.boundingBox(),targetBox=await to.boundingBox();
   assert.ok(sourceBox&&targetBox,'Both connection handles must be visible');

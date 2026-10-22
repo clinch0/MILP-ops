@@ -6,6 +6,10 @@ import urllib.request
 from calls.services.netutil import open_http
 
 
+class ModuleUnavailable(ValueError):
+    """Transport failure, distinct from a reachable module rejecting an operation."""
+
+
 def module_call(module, operation, args):
     if module not in {'crm', 'tts', 'asr', 'nlu'}:
         raise ValueError('Unsupported administration module')
@@ -23,7 +27,7 @@ def module_call(module, operation, args):
         except (OSError,ValueError):
             raise ValueError('Модуль '+module+' недоступен; проверьте запуск контейнера') from None
     except OSError:
-        raise ValueError('Модуль '+module+' недоступен; проверьте запуск контейнера') from None
+        raise ModuleUnavailable('Модуль '+module+' недоступен; проверьте запуск контейнера') from None
     if result.get('status') not in {'ok','empty'}:
         raise ValueError(result.get('payload',{}).get('error') or result.get('status','Ошибка модуля'))
     return result.get('payload',{})

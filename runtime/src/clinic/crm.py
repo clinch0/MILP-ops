@@ -193,6 +193,7 @@ class ClinicCrm:
             if op == "identity_start": return self.identity_form.start(**args)
             if op == "identity_answer": return self.identity_form.answer(**args)
             if op == "identity_use_policy": return self.identity_form.use_policy(**args)
+            if op == "identity_use_card": return self.identity_form.use_card(**args)
             if op == "control.insights":
                 from .insights_access import AccessError, verify_request
                 try:
@@ -373,6 +374,11 @@ class ClinicCrm:
                     "html": ticket.to_html(),
                     "ticket": json.loads(ticket.to_json()),
                 }
+            if op == "stand.operator_connected":
+                return self.operator_connected(str(args.get('target_call_id') or args.get('call_id', '')))
+            if op == "stand.operator_status":
+                rows = self.reg.execute('SELECT sync_state,remote_id FROM operator_requests WHERE call_id=? ORDER BY id DESC LIMIT 1', (str(args.get('target_call_id') or args.get('call_id','')),))
+                return ('ok', rows[0]) if rows else ('empty', {})
             if op == "operator_list":
                 rows = self.reg.execute(
                     "SELECT payload,id FROM operator_requests ORDER BY id DESC LIMIT 30"
@@ -875,6 +881,46 @@ class ClinicCrm:
                 "UPDATE slots SET status='booked',booking_id=? WHERE id=?",
                 (b.id, target["id"]),
             )
+
+    def operator_connected(self, call_id):
+        """Called by trusted ARI only after the operator answered and was bridged.
+
+        Escalation POST is not idempotent in DBI: a lost acknowledgement remains
+        uncertain for reconciliation, never automatically submitted twice.
+        """
+        with self.mutations:
+            rows = self.reg.execute('SELECT id,payload,sync_state,remote_id FROM operator_requests WHERE call_id=? ORDER BY id DESC LIMIT 1', (call_id,))
+            if not rows:
+                return 'empty', {'reason':'no_transfer_ticket'}
+            row = rows[0]
+            if row['sync_state'] in {'synced','sending','uncertain','failed'}:
+                return 'ok', {'state':row['sync_state'], 'remote_id':row['remote_id']}
+            ticket = json.loads(row['payload'])
+            patient = self.reg.patient_by_id(ticket.get('patient_id')) if ticket.get('patient_id') else None
+            if not patient or not patient.birth_date:
+                return 'ok', {'state':'local_only','reason':'identity_not_verified'}
+            if not self.stand:
+                return 'ok', {'state':'local_only','reason':'no_stand'}
+            mapping = self.reg.execute('SELECT remote_id FROM remote_clients WHERE patient_id=?', (patient.id,))
+            # A client is created only for an already verified local identity.
+            if not mapping:
+                client = self.stand.request('POST','/clients',{'last_name':patient.last_name,'first_name':patient.first_name,'middle_name':patient.middle_name or None,'birth_date':patient.birth_date.strftime('%d.%m.%Y')})
+                remote_pid = int(client['id'])
+                self.reg._x('INSERT INTO remote_clients VALUES(?,?)',(patient.id,remote_pid))
+            else:
+                remote_pid = int(mapping[0]['remote_id'])
+            text = 'Разговор передан ответившему регистратору. Причина: '+str(ticket.get('reason','unknown'))+'. '+ ' '.join(str(x) for x in ticket.get('utterances',[])[-2:])
+            text = ''.join(c for c in text if c in '\n\t' or (ord(c)>=32 and not 127<=ord(c)<=159))[:1000]
+            self.reg.mark_operator_synced(row['id'],state='sending')
+            try:
+                result = self.stand.request('POST','/escalations',{'client_id':remote_pid,'description':text})
+                if type(result.get('id')) is not int or result.get('client_id') != remote_pid:
+                    raise ValueError('invalid escalation acknowledgement')
+                self.reg.mark_operator_synced(row['id'],result['id'])
+                return 'ok', {'state':'synced','remote_id':result['id'],'stand_acknowledged':True}
+            except (MisError, OSError, ValueError, KeyError):
+                self.reg.mark_operator_synced(row['id'],state='uncertain')
+                return 'error', {'state':'uncertain','reconciliation_required':True}
 
     def dial_due(self):
         from .outreach import due_reminders

@@ -12,6 +12,7 @@ state name
   say "{identity_question}"
   listen 20s field=full_name
   dtmf 2 -> use_policy
+  dtmf 3 -> use_card
   any -> remember_reply
   timeout 20s -> name
   retry 2 -> operator reason=identity_name_unclear
@@ -20,6 +21,23 @@ state use_policy
   call crm.identity_use_policy
   policy -> policy
   error -> operator reason=identity_failed
+
+state use_card
+  call crm.identity_use_card
+  card -> card
+  error -> operator reason=identity_failed
+
+state card
+  say "{identity_question}"
+  ask card_no digits 3-10 timeout 25s terminator "#"
+  listen 25s
+  ok -> remember_card
+  timeout -> card
+  retry 2 -> operator reason=identity_card_unclear
+
+state remember_card
+  set identity_reply = $card_no
+  goto collect
 
 state birth
   say "{identity_question}"
@@ -84,6 +102,7 @@ state collect
   birth -> birth
   phone -> phone
   policy -> policy
+  card -> card
   readback -> readback
   match_confirm -> readback
   policy_confirm -> readback

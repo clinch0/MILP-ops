@@ -409,6 +409,10 @@ class DemoCalls:
         if digit is None:
             digit={'один':'1','одна':'1','первый':'1','первое':'1','два':'2','две':'2','второй':'2','три':'3','третий':'3','ноль':'0'}.get(low)
             if low in set('0123456789'):digit=low
+            if digit is None and call.state in {'slots','doctor'}:
+                choice=re.fullmatch(r'(?:вариант\s+)?(первый|второй|третий|один|два|три|[123])(?:\s+вариант)?[.!?]*',low)
+                if choice:
+                    digit={'первый':'1','второй':'2','третий':'3','один':'1','два':'2','три':'3'}.get(choice[1],choice[1])
         if call.state=='specialist' and digit=='0':return self._handoff(call,'requested_operator')
         if call.state=='identity_confirm':
             if digit=='1' or yes_no is True:

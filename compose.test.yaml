@@ -1,0 +1,32 @@
+name: clinic-voice-tests
+services:
+  integration:
+    image: clinic-voice-integration-test
+    build:
+      context: .
+      dockerfile: docker/integration-test.Dockerfile
+    network_mode: none
+    mem_limit: 5g
+    cpus: 2
+    environment:
+      PYTHONPATH: /workspace:/workspace/runtime/src
+      APP_MODE: demo
+      NLU_MODEL_PATH: /workspace/modules/nlu/models/multilingual-e5-small
+      ASR_MODEL_PATH: /workspace/modules/asr/models
+      HF_HUB_OFFLINE: "1"
+      CLINIC_ACCEPTANCE_TEST: "1"
+      STAND_URL: ""
+      STAND_TOKEN: ""
+      DBI_API_TOKEN: ""
+      OPENAI_API_KEY: ""
+      OPENROUTER_API_KEY: ""
+      SMS_GATEWAY_URL: ""
+    volumes:
+      - .:/workspace
+      - ./modules:/workspace/modules:ro
+      - test-registry:/usr/local/cargo/registry
+      - test-target:/workspace/target
+    command: ["cargo build --locked --bins && cargo test --locked --lib && python -m pytest -q tests/integration --timeout=60 --junitxml=debug/runs/integration-test/results.xml"]
+volumes:
+  test-registry:
+  test-target:

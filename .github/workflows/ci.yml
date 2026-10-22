@@ -17,7 +17,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: pip install -r requirements/dev.txt
       - run: pip install --index-url https://download.pytorch.org/whl/cpu torch==2.14.1
-      - run: pip install -r requirements/asr.txt omegaconf==2.3.0
+      - run: pip install -r requirements/asr.txt omegaconf==2.3.0 silero-stress==1.5
       - run: python tools/download_models.py --tts --asr
         env: {HF_HUB_DISABLE_TELEMETRY: '1'}
       - run: python tools/download_nlu.py

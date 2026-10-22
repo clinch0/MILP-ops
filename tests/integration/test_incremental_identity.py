@@ -36,6 +36,40 @@ def patient(service, identifier=1, last='Иванов', first='Иван', middle
                    (identifier,last,first,middle,'1985-04-12',phone,oms))
 
 
+def test_card_route_requires_birth_and_database_readback(service):
+    patient(service)
+    service.reg._x('UPDATE patients SET card_no=? WHERE id=1',('1003',))
+    service.start('card')
+    assert service.use_card('card')[0]=='card'
+    assert service.answer('card','1003')[0]=='birth'
+    stage,result=service.answer('card','12.04.1985')
+    assert stage=='match_confirm' and 'patient_id' not in result
+    stage,result=service.answer('card','да')
+    assert stage=='ok' and result['patient_id']==1
+
+
+def test_card_route_never_verifies_wrong_birth_or_locked_patient(service):
+    patient(service)
+    service.reg._x('UPDATE patients SET card_no=? WHERE id=1',('1003',))
+    for key,birth,locked in [('wrong-birth','13.04.1985',None),('wrong-person','12.04.1985',2)]:
+        service.start(key,locked_patient_id=locked)
+        service.use_card(key);service.answer(key,'1003')
+        stage,result=service.answer(key,birth)
+        if stage=='match_confirm':stage,result=service.answer(key,'да')
+        assert stage=='operator' and 'patient_id' not in result
+
+
+def test_declined_card_identity_clears_card_route_before_new_name(service):
+    patient(service)
+    service.reg._x('UPDATE patients SET card_no=? WHERE id=1',('1003',))
+    service.start('correction');service.use_card('correction')
+    service.answer('correction','1003');service.answer('correction','12.04.1985')
+    assert service.answer('correction','нет')[0]=='name'
+    service.answer('correction','Иванов Иван Петрович')
+    assert service.answer('correction','12.04.1985')[0]=='readback'
+    assert service.answer('correction','да')[0]=='ok'
+
+
 @pytest.mark.parametrize('utterance',[SPOKEN,ASR,'Иванов Иван 12.04.1985','Иванов Иван двенадцатого апреля тысяча девятьсот восемьдесят пятого года'])
 def test_partial_names_and_complete_dob_accumulate_without_model(service,utterance):
     patient(service)

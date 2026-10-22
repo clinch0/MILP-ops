@@ -67,6 +67,15 @@ class Nlu:
         confidence = 1.0 if safety_intent else verified.confidence
         if meaning and not safety_intent:
             intent,confidence = meaning["intent"],meaning["confidence"]
+        # The generic semantic model can rank this exact operational request as
+        # unknown. Resolve only an unambiguous complete command; the dialogue
+        # still verifies identity, selects a real slot and asks for consent.
+        if not safety_intent and re.fullmatch(
+            r"\s*(?:пожалуйста[,\s]+)?(?:(?:хочу|нужно|надо|можно)\s+)?"
+            r"перен(?:ести|есите|есем|есём)\s+(?:мою\s+)?(?:запись|при[её]м)"
+            r"(?:[.!?,\s]|пожалуйста)*", text.lower()
+        ):
+            intent,confidence = 'reschedule',1.0
         # Disagreement can request a person; no speculative write is executed by an embedding.
         if not meaning and verified.action == "operator" and intent not in HUMAN_ONLY:
             intent = "operator"
@@ -175,6 +184,10 @@ class Nlu:
                     if len(constraints['dates']) == 1: vars['said_date'] = constraints['dates'][0]
                 if constraints['time_from'] is not None or constraints['time_to'] is not None:
                     vars.pop('said_time', None)
+                    if (constraints['time_from'] == constraints['time_to']
+                            and constraints['time_from_inclusive'] and constraints['time_to_inclusive']
+                            and not constraints['needs_clarification']):
+                        vars['said_time'] = constraints['time_from']
         if meaning and intent=='greeting' and any(k in vars for k in ('said_date','said_time','said_daypart')):intent='unknown'
         return "ok", {
             "intent": intent,

@@ -146,6 +146,13 @@ class OnnxAsrModule:
         if len(pcm) % 2 or int(args.get("rate", 8000)) not in (8000, 16000, 24000, 48000):
             return "error", {"error": "invalid PCM16 audio/rate"}
         x = self._to_16k(pcm, int(args.get("rate", 8000)))
+        # A finished short utterance may have no acoustic context around its
+        # endpoints (e.g. a subsecond confirmation). The RNN-T then emits only
+        # blanks. Pad the actual waveform, never replace it with expected text.
+        # Keep the original duration for honest inference/latency accounting.
+        audio_s = len(x) / 16000 or 1e-6
+        if 0 < len(x) <= 32000:
+            x = np.pad(x, (3200, 3200))
         t0 = time.perf_counter()
         with self._lock:
             if self._verification_error:
@@ -154,7 +161,6 @@ class OnnxAsrModule:
             if self.provider == "CUDAExecutionProvider" and not self.cuda_verified:
                 self._verify_cuda_execution()
         dt = time.perf_counter() - t0
-        audio_s = len(x) / 16000 or 1e-6
         return "ok", {"text": text, "final": True, "engine": f"{self.engine}:{self.model_name}", "rtf": round(dt / audio_s, 3),
                       "provider": self.provider, "device_id": self.device_id if self.provider == "CUDAExecutionProvider" else None,
                       "cuda_verified": self.cuda_verified}

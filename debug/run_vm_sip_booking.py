@@ -5,6 +5,7 @@ No call.start/call.speech/call.dtmf injection. Cancels only the new test visit.
 Requires the organizer check.py and phone credentials mounted read-only.
 """
 import audioop
+import argparse
 import base64
 import importlib.util
 import json
@@ -39,7 +40,9 @@ def save(name, pcm):
         output.writeframes(pcm)
 
 
-def main():
+def main(operator=False):
+    global FOLDER
+    if operator: FOLDER = ROOT / 'debug/runs/sip-answered-transfer'
     FOLDER.mkdir(parents=True, exist_ok=True)
     spec = importlib.util.spec_from_file_location('organizer_sip', '/organizer/check.py')
     sip = importlib.util.module_from_spec(spec)
@@ -54,6 +57,7 @@ def main():
         'inbound.book_start':'К терапевту.',
         'inbound.book_offer':'Да, подходит.',
     }
+    if operator: phrases['inbound.book_offer'] = 'Соедините меня с регистратором.'
     clips = {}
     for state, text in phrases.items():
         clip = post(API,'speech.synth',{'text':text,'rate':1.3})
@@ -97,7 +101,7 @@ def main():
             frame = frame.ljust(320,b'\0')
             sent.extend(frame)
             yield convert(frame,2)
-            if state.get('finished') and time.monotonic()-observed['last_voice'] > 2:
+            if state.get('finished') and time.monotonic()-observed['last_voice'] > (15 if operator else 2):
                 break
 
     sip.tone_frames = frames
@@ -124,7 +128,14 @@ def main():
         state = observed['state']
         result['call_id'], result['final_state'] = observed['call_id'], state
         assert result['sip']['status'] == 200 and result['sip']['rtp_in']>100, result
-        assert state.get('status') == 'booked' and state['vars']['booking_status'] == 'booked', state
+        if operator:
+            assert state.get('status') == 'transfer', state
+            transfer = post(CRM,'stand.operator_status',{'call_id':observed['call_id']})
+            result['operator'] = transfer
+            assert transfer['sync_state'] == 'synced' and transfer['remote_id'], transfer
+            result['scope'] = 'actual SIP answered test softphone + bridge + DBI escalation; not a staffed-human acceptance'
+        else:
+            assert state.get('status') == 'booked' and state['vars']['booking_status'] == 'booked', state
         result['passed'] = True
     finally:
         stop.set()
@@ -145,4 +156,7 @@ def main():
         print(json.dumps({'passed':result['passed'],'call_id':observed['call_id'],'duration_seconds':result['duration_seconds']},ensure_ascii=False))
 
 
-if __name__ == '__main__': main()
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--operator',action='store_true')
+    main(parser.parse_args().operator)

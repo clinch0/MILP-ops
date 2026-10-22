@@ -1,6 +1,7 @@
 """Originate a real SIP call; StasisStart creates the reminder session only after answer."""
 
 import os
+import re
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -26,13 +27,20 @@ def run():
     )
     endpoint = os.environ["SIP_OUTBOUND_ENDPOINT"]  # e.g. PJSIP/{phone}@clinic-trunk
     caller = os.environ["CLINIC_PHONE"]
+    allowed = {p.strip() for p in os.environ.get('OUTBOUND_ALLOWED_PHONES','').split(',') if p.strip()}
+    if not allowed:
+        raise ValueError('Set the explicit consented OUTBOUND_ALLOWED_PHONES before dialing')
 
     def dial(item):
         attempt = None
         try:
+            if item.get('phone') not in allowed:
+                return
             status, attempt = crm.call("dial_reserve", item)
             if status != "ok":
                 return
+            if attempt['phone'] not in allowed or not re.fullmatch(r'[+a-zA-Z0-9_-]{1,32}',attempt['phone']):
+                raise ValueError('Reserved destination changed or is not a safe SIP user')
             channel_id = str(uuid.uuid4())
             channel = ari._req(
                 "POST",
@@ -73,4 +81,6 @@ def run():
         while True:
             _, result = crm.call("dial_due", {})
             list(pool.map(dial, result.get("items", [])))
+            if os.environ.get('OUTBOUND_ONCE') == '1':
+                return
             time.sleep(30)

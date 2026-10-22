@@ -38,12 +38,20 @@ last_name,first_name,middle_name,birth_date,phone,oms,NULL AS district FROM pati
             if len(self.sessions)>=1000:return 'error',{'error':'identity_capacity'}
             self.sessions[call_id]={'lock':threading.RLock(),'form':IdentityForm(),'stage':'name','phone':phone_digits(caller_phone),
                 'locked':locked_patient_id,'tries':0,'invalids':0,'candidates':[],'pending':None,'policy':'','policy_first':False,'queries':[],'updated':now}
-            return self.reply(call_id,'name',QUESTIONS['full_name']+' Если удобнее назвать номер полиса ОМС, нажмите два.')
+            return self.reply(call_id,'name',QUESTIONS['full_name']+' Для полиса ОМС нажмите два. Для номера карты нажмите три.')
+
+    def use_card(self,call_id,**_):
+        with self.lock:
+            if call_id not in self.sessions:return 'error',{'error':'identity_not_started'}
+            self.sessions[call_id]['card_first']=True
+            self.sessions[call_id]['policy_first']=False
+            return self.reply(call_id,'card','Введите номер карты и нажмите решётку. Затем уточню дату рождения.')
 
     def use_policy(self,call_id,**_):
         with self.lock:
             if call_id not in self.sessions:return 'error',{'error':'identity_not_started'}
             self.sessions[call_id]['policy_first']=True
+            self.sessions[call_id]['card_first']=False
             return self.reply(call_id,'policy','Назовите номер полиса ОМС полностью: шестнадцать цифр. Затем уточню дату рождения.')
 
     def reply(self,key,stage,question='',**extras):
@@ -110,6 +118,7 @@ last_name,first_name,middle_name,birth_date,phone,oms,NULL AS district FROM pati
             if foreign_language_request(text):return self.reply(call_id,'operator',reason='language_unsupported')
             correction=re.match(r'^\s*нет[, .!]*\s*(?:я\s+|меня зовут\s+)(.+)',text,re.I)
             if correction:
+                session['card_first']=False
                 form.reset();session['pending']=None;session['candidates']=[];session['policy']='';session['policy_first']=False;stage='name';text=correction[1]
             low=folded(text).strip(' .!')
             if stage in {'match_confirm','readback','policy_confirm'}:
@@ -124,6 +133,7 @@ last_name,first_name,middle_name,birth_date,phone,oms,NULL AS district FROM pati
                         return self.lookup(call_id)
                     return self.reply(call_id,'policy',QUESTIONS['oms'])
                 if yes is False:
+                    session['card_first']=False
                     form.reset();session['policy']='';session['policy_first']=False
                     return self.reply(call_id,'name',form.question(self.model))
                 if stage=='readback':form.requested='last_name';stage='name'
@@ -140,9 +150,19 @@ last_name,first_name,middle_name,birth_date,phone,oms,NULL AS district FROM pati
                 parsed=birth_date_input(text,today=self.today())
                 if parsed['status']!='valid':return self.reply(call_id,'birth',parsed['message'])
                 form.birth_date=parsed['value']
+                if session.get('card_first'):
+                    rows=[dict(r) for r in self.reg._q('SELECT id FROM patients WHERE card_no=? AND birth_date=?',(session['card'],form.birth_date))]
+                    if len(rows)!=1:return self.reply(call_id,'operator',reason='identity_card_not_unique' if rows else 'patient_not_found_after_card')
+                    row=self.candidates(call_id,{},birth=form.birth_date,cohort=[rows[0]['id']])[0]
+                    session['pending']=row
+                    return self.confirm_candidate(call_id,row)
                 if session['policy_first']:
                     return self.policy_lookup(call_id,session['policy'])
                 return self.lookup(call_id)
+            if stage=='card':
+                try:session['card']=normalize_identifier(text,'card_no')
+                except ValueError:return self.reply(call_id,'card','Введите номер карты и нажмите решётку.')
+                return self.reply(call_id,'birth',QUESTIONS['birth_date'])
             if stage=='phone':
                 try:session['phone']=phone_digits(normalize_identifier(text,'phone'))
                 except ValueError:return self.reply(call_id,'phone',QUESTIONS['phone'])

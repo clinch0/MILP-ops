@@ -58,6 +58,8 @@ class Context:
     call_id: str
     channel: str
     media: str = ""
+    operator: str = ""
+    operator_connected: threading.Event = field(default_factory=threading.Event)
     events: Queue = field(default_factory=lambda: Queue(maxsize=64))
     stop: threading.Event = field(default_factory=threading.Event)
     generation: int = 0
@@ -155,13 +157,7 @@ class Bridge:
                         )
                 elif prompt.get("finished"):
                     if prompt.get("status") == "transfer":
-                        self.ari._req(
-                            "POST",
-                            f"/channels/{ctx.channel}/continue",
-                            context="clinic-operator",
-                            extension="s",
-                            priority=1,
-                        )
+                        self.transfer(ctx)
                     else:
                         self.ari.hangup(ctx.channel)
                     break
@@ -169,6 +165,63 @@ class Bridge:
                 print(json.dumps({'event':'playback_failed','call_id':ctx.call_id,'error_type':type(exc).__name__}), flush=True)
                 break
             ctx.stop.wait(0.05)
+
+    def transfer(self, ctx):
+        endpoint = os.environ.get("OPERATOR_SIP_ENDPOINT", "")
+        if not endpoint:
+            self.ari._req("POST", f"/channels/{ctx.channel}/continue",
+                          context="clinic-operator", extension="s", priority=1)
+            return
+        ctx.operator = str(uuid.uuid4())
+        try:
+            self.ari._req("POST", f"/channels/{ctx.channel}/ring")
+            self.ari._req("POST", "/channels", endpoint=endpoint, app="calls",
+                          appArgs=f"operator,{ctx.call_id}", timeout=30,
+                          channelId=ctx.operator)
+        except (OSError, ValueError):
+            self.transfer_failed(ctx)
+            return
+        print(json.dumps({'event':'operator_dialing','call_id':ctx.call_id}), flush=True)
+        def deadline():
+            if not ctx.operator_connected.wait(32) and not ctx.stop.is_set():
+                self.transfer_failed(ctx)
+        threading.Thread(target=deadline, daemon=True).start()
+
+    def transfer_failed(self, ctx):
+        print(json.dumps({'event':'operator_unanswered','call_id':ctx.call_id}), flush=True)
+        try:
+            self.ari._req("DELETE", f"/channels/{ctx.channel}/ring")
+            clip = self.client.call('speech.synth', text='Сотрудник сейчас не отвечает. Ваше обращение сохранено для регистратора. Если нужна срочная помощь, позвоните сто двенадцать.', rate=1.3)
+            pcm = base64.b64decode(clip['pcm_b64'])
+            if ctx.conn:
+                for offset in range(0,len(pcm),320):
+                    if ctx.stop.is_set(): break
+                    frame=pcm[offset:offset+320]
+                    ctx.conn.sendall(bytes([0x10])+struct.pack('!H',len(frame))+frame)
+                    ctx.stop.wait(.02)
+        except (OSError, ValueError, KeyError):
+            pass
+        finally:
+            if ctx.operator: self.ari.hangup(ctx.operator)
+            self.ari.hangup(ctx.channel)
+
+    def connect_operator(self, channel, call_id):
+        ctx = self.calls.get(call_id)
+        if not ctx or ctx.stop.is_set() or channel.get('id') != ctx.operator:
+            self.ari.hangup(channel['id'])
+            return
+        self.ari._req("DELETE", f"/channels/{ctx.channel}/ring")
+        self.ari.bridge(ctx.channel, ctx.operator)
+        self.by_channel[ctx.operator] = call_id
+        ctx.operator_connected.set()
+        print(json.dumps({'event':'operator_connected','call_id':call_id}), flush=True)
+        if ctx.media: self.ari.hangup(ctx.media)
+        # The external card means an answered, bridged transfer, never an offer.
+        try:
+            result = self.client.call('stand.operator_connected', target_call_id=call_id)
+            print(json.dumps({'event':'operator_escalation','call_id':call_id,'status':result.get('status')}), flush=True)
+        except (OSError, ValueError):
+            print(json.dumps({'event':'operator_escalation_unconfirmed','call_id':call_id}), flush=True)
 
     def audio(self, ctx, pcm):
         if len(pcm) % 2:
@@ -282,7 +335,7 @@ class Bridge:
             ctx.media = media["id"]
             self.ari.bridge(ctx.channel, ctx.media)
             self.client.call(
-                "call.start", call_id=call_id, flow=flow, caller_phone=phone, registrar_number=str(channel.get("dialplan",{}).get("exten","100")), vars=vars
+                "call.start", call_id=call_id, flow=flow, caller_phone=phone, registrar_number=(os.environ.get('REGISTRAR_NUMBER','114') if flow == 'reminder' else str(channel.get("dialplan",{}).get("exten","100"))), vars=vars
             )
             threading.Thread(target=self.controls, args=(ctx,), daemon=True).start()
             threading.Thread(target=self.playback, args=(ctx,), daemon=True).start()
@@ -294,6 +347,10 @@ class Bridge:
         channel = ev.get("channel", {})
         kind = ev.get("type")
         if kind == "StasisStart":
+            args = ev.get('args', [])
+            if len(args) == 2 and args[0] == 'operator':
+                threading.Thread(target=self.connect_operator, args=(channel,args[1]), daemon=True).start()
+                return
             name = channel.get("name", "")
             if name.startswith(("AudioSocket/", "UnicastRTP/")):
                 return
@@ -312,6 +369,10 @@ class Bridge:
             ctx = self.calls.pop(call_id, None)
             if ctx:
                 ctx.stop.set()
+                for peer in (ctx.channel, ctx.operator):
+                    if peer and peer != channel.get('id'):
+                        self.by_channel.pop(peer, None)
+                        self.ari.hangup(peer)
                 if ctx.media:
                     self.ari.hangup(ctx.media)
                 threading.Thread(

@@ -1,6 +1,10 @@
 # Hackathon VM: 4 CPU / 8 GiB, local CPU speech and organizer SIP gateway.
 # Secrets and generated Asterisk configuration live in ignored secrets/.
 services:
+  outbound:
+    environment:
+      ARI_URL: http://host.docker.internal:18088
+      OUTBOUND_ALLOWED_PHONES: ${OUTBOUND_ALLOWED_PHONES:-phone-114}
   scenario-editor:
     environment:
       EDITOR_SECURE_COOKIE: "1"
@@ -44,3 +48,4 @@ services:
       ORCHESTRATOR_URL: http://127.0.0.1:8080
       AUDIOSOCKET_BIND: 127.0.0.1:9092
       AUDIOSOCKET_ADVERTISE: 127.0.0.1:9092
+      OPERATOR_SIP_ENDPOINT: ${OPERATOR_SIP_ENDPOINT:-PJSIP/phone-114@gateway}

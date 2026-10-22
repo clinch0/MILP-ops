@@ -44,6 +44,14 @@ def test_numeric_and_spoken_dates_and_harmless_grammar_are_equivalent():
                    'На этот номер записаны несколько пациентов. Введите дату рождения пациента: 8 цифр.')['passed']
 
 
+def test_clock_range_format_does_not_hide_changed_hours_minutes_or_polarity():
+    expected='Обратный звонок можно выбрать с десяти до шестнадцати часов. Один — да. Два — нет.'
+    assert compare(expected,'Обратный звонок можно выбрать с 10:00 до 16:00. Один — да. Два — нет.')['passed']
+    for clock in ['с 10:00 до 15:00','с 10:00 до 16:30','с 16:00 до 10:00']:
+        assert not compare(expected,'Обратный звонок можно выбрать '+clock+'. Один — да. Два — нет.')['passed']
+    assert not compare(expected,expected.replace('до шестнадцати','после шестнадцати'))['passed']
+
+
 def test_real_dictionary_fallback_and_clitics_determine_fingerprint():
     plain = DictAccentor(lexicon={'замок': 'з+амок'})
     changed = DictAccentor(lexicon={'замок': 'зам+ок'})

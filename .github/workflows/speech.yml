@@ -13,7 +13,7 @@ jobs:
         with: {python-version: '3.12'}
       - uses: dtolnay/rust-toolchain@1.98.0
       - run: pip install --index-url https://download.pytorch.org/whl/cpu torch==2.14.1
-      - run: pip install -r requirements/base.txt -r requirements/asr.txt omegaconf==2.3.0
+      - run: pip install -r requirements/base.txt -r requirements/asr.txt omegaconf==2.3.0 silero-stress==1.5
       - run: python tools/download_models.py --tts --asr
         env: {HF_HUB_DISABLE_XET: '1', HF_HUB_DISABLE_TELEMETRY: '1'}
       - run: |
